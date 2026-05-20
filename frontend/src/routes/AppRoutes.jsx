@@ -15,6 +15,7 @@ import MemberDashboard from '../pages/MemberDashboard';
 import Announcements from '../pages/Announcements';
 import Unauthorized from '../pages/Unauthorized';
 import Notifications from '../pages/Notifications';
+import LeaveRequests from '../pages/LeaveRequests';
 
 const AppRoutes = () => {
   return (
@@ -26,6 +27,7 @@ const AppRoutes = () => {
         <Route element={<DashboardLayout />}>
           <Route element={<RoleBasedRoute allowedRoles={['Admin']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/leave-requests" element={<LeaveRequests />} />
             <Route path="/team" element={<Team />} />
             <Route path="/projects/create" element={<CreateProject />} />
             <Route path="/tasks/create" element={<CreateTask />} />

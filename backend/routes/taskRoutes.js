@@ -9,7 +9,8 @@ import {
   submitTask,
   reviewTask,
   getOverdueTasks,
-  getLeaderboard
+  getLeaderboard,
+  leaveTask
 } from '../controllers/taskController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { admin } from '../middleware/roleMiddleware.js';
@@ -24,5 +25,6 @@ router.route('/:id').get(protect, getTaskById).put(protect, admin, updateTask).d
 router.route('/:id/status').put(protect, updateTaskStatus);
 router.route('/:id/submit').put(protect, submitTask);
 router.route('/:id/review').put(protect, admin, reviewTask);
+router.route('/:id/leave').post(protect, leaveTask);
 
 export default router;

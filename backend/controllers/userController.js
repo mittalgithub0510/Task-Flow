@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import { createNotification } from '../utils/createNotification.js';
 
 export const getUsers = async (req, res) => {
   try {
@@ -30,9 +31,32 @@ export const updateUser = async (req, res) => {
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
       user.role = req.body.role || user.role;
+
       if (req.body.performanceScore !== undefined) {
-        user.performanceScore = req.body.performanceScore;
+        const oldScore = user.performanceScore;
+        const newScore = req.body.performanceScore;
+        const diff = newScore - oldScore;
+        user.performanceScore = newScore;
+
+        // Notify the member about the points change
+        if (diff !== 0 && req.user && req.user._id.toString() !== user._id.toString()) {
+          const isAdd = diff > 0;
+          await createNotification({
+            title: isAdd ? `🏆 Points Added — +${diff} pts` : `⚠️ Points Deducted — ${diff} pts`,
+            message: isAdd
+              ? `Your performance score has been increased by ${diff} point${diff !== 1 ? 's' : ''}. New total: ${newScore} pts. Keep up the great work!`
+              : `Your performance score has been reduced by ${Math.abs(diff)} point${Math.abs(diff) !== 1 ? 's' : ''}. New total: ${newScore} pts.`,
+            type: 'points_update',
+            receiver: user._id,
+            sender: req.user._id,
+            oldValue: `${oldScore} pts`,
+            newValue: `${newScore} pts`,
+            actionDetails: `Performance score updated by Admin`,
+            priority: isAdd ? 'medium' : 'high',
+          });
+        }
       }
+
       if (req.body.badges) {
         user.badges = req.body.badges;
       }

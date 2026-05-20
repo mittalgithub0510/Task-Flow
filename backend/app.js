@@ -13,6 +13,7 @@ import blockerRoutes from './routes/blockerRoutes.js';
 import certificateRoutes from './routes/certificateRoutes.js';
 import bugRoutes from './routes/bugRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import leaveRequestRoutes from './routes/leaveRequestRoutes.js';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/blockers', blockerRoutes);
 app.use('/api/certificates', certificateRoutes);
 app.use('/api/bugs', bugRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/leave-requests', leaveRequestRoutes);
 
 import path from 'path';
 import { fileURLToPath } from 'url';

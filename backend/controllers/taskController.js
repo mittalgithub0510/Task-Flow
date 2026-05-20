@@ -4,33 +4,61 @@ import Project from '../models/Project.js';
 import logActivity from '../utils/activityLogger.js';
 import { calculatePerformance } from '../utils/calculatePerformance.js';
 import { createNotification } from '../utils/createNotification.js';
+import LeaveRequest from '../models/LeaveRequest.js';
 
 export const createTask = async (req, res) => {
   try {
-    const { title, description, projectId, assignedTo, priority, difficulty, dueDate } = req.body;
+    const { title, description, projectId, assignedTo, assignmentType, priority, difficulty, dueDate } = req.body;
+    
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    
+    if (['completed', 'paused', 'closed'].includes(project.status.toLowerCase())) {
+      return res.status(400).json({ message: 'Cannot create task because this project is completed or on hold.' });
+    }
+
+    let finalAssignedTo = [];
+    if (assignmentType === 'all') {
+      finalAssignedTo = project.members;
+    } else {
+      const assignees = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+      const projectMemberIds = project.members.map(id => id.toString());
+      for (const assigneeId of assignees) {
+        if (!projectMemberIds.includes(assigneeId.toString())) {
+          return res.status(400).json({ message: 'Selected member has not joined this project.' });
+        }
+      }
+      finalAssignedTo = assignees;
+    }
+
+    if (finalAssignedTo.length === 0) {
+      return res.status(400).json({ message: 'No joined members found for this project or none selected.' });
+    }
+
     const task = await Task.create({
       title,
       description,
       projectId,
-      assignedTo,
+      assignedTo: finalAssignedTo,
       assignedBy: req.user._id,
       priority,
       difficulty,
       dueDate,
     });
+    
     await logActivity('task_assigned', `Task ${title} assigned`, req.user._id, projectId, task._id);
     
-    const project = await Project.findById(projectId);
-    
-    await createNotification({
-      title: 'New Task Assigned',
-      message: `Admin ${req.user.name} assigned you a new task: ${title} in project ${project?.title || ''}.`,
-      type: 'task_assigned',
-      receiver: assignedTo,
-      sender: req.user._id,
-      project: projectId,
-      task: task._id
-    });
+    for (const assignee of finalAssignedTo) {
+      await createNotification({
+        title: 'New Task Assigned',
+        message: `Admin ${req.user.name} assigned you a new task: ${title} in project ${project.title}.`,
+        type: 'task_assigned',
+        receiver: assignee,
+        sender: req.user._id,
+        project: projectId,
+        task: task._id
+      });
+    }
     
     res.status(201).json(task);
   } catch (error) {
@@ -82,19 +110,21 @@ export const updateTask = async (req, res) => {
     if (oldPriority !== updatedTask.priority) updates.push({ field: 'Priority', old: oldPriority, new: updatedTask.priority });
     if (oldDifficulty !== updatedTask.difficulty) updates.push({ field: 'Difficulty', old: oldDifficulty, new: updatedTask.difficulty });
     
-    if (task.assignedTo && updates.length > 0) {
+    if (task.assignedTo && task.assignedTo.length > 0 && updates.length > 0) {
       for (const update of updates) {
-        await createNotification({
-          title: `Task ${update.field} Updated`,
-          message: `Admin ${req.user.name} updated ${update.field.toLowerCase()} for task ${task.title}.`,
-          type: 'task_updated',
-          receiver: task.assignedTo,
-          sender: req.user._id,
-          project: task.projectId,
-          task: task._id,
-          oldValue: String(update.old),
-          newValue: String(update.new)
-        });
+        for (const assignee of task.assignedTo) {
+          await createNotification({
+            title: `Task ${update.field} Updated`,
+            message: `Admin ${req.user.name} updated ${update.field.toLowerCase()} for task ${task.title}.`,
+            type: 'task_updated',
+            receiver: assignee,
+            sender: req.user._id,
+            project: task.projectId,
+            task: task._id,
+            oldValue: String(update.old),
+            newValue: String(update.new)
+          });
+        }
       }
     }
     
@@ -167,7 +197,7 @@ export const submitTask = async (req, res) => {
       submittedAt: { $exists: true }
     });
     
-    const user = await User.findById(task.assignedTo);
+    const user = await User.findById(req.user._id);
     
     if (new Date(task.submittedAt) > new Date(task.dueDate)) {
       task.submissionRank = 'Late Submitted';
@@ -214,29 +244,35 @@ export const reviewTask = async (req, res) => {
     task.reviewStatus = status;
     task.reviewComment = reviewComment;
     
-    const user = await User.findById(task.assignedTo);
-    
     if (status === 'rejected') {
       task.rejectionReason = rejectionReason;
-      if (user) { user.performanceScore += calculatePerformance('rejected'); await user.save(); }
+      for (const assignee of task.assignedTo) {
+        const u = await User.findById(assignee);
+        if (u) { u.performanceScore += calculatePerformance('rejected'); await u.save(); }
+      }
     } else if (status === 'approved') {
-      if (user) { user.performanceScore += calculatePerformance('approved'); await user.save(); }
+      for (const assignee of task.assignedTo) {
+        const u = await User.findById(assignee);
+        if (u) { u.performanceScore += calculatePerformance('approved'); await u.save(); }
+      }
     }
 
     await task.save();
     await logActivity(`task_${status}`, `Task ${status}`, req.user._id, task.projectId, task._id);
     
-    if (task.assignedTo) {
-      await createNotification({
-        title: `Task ${status === 'approved' ? 'Approved' : 'Rejected'}`,
-        message: `Admin ${req.user.name} ${status} your task ${task.title}.`,
-        type: status === 'approved' ? 'task_approved' : 'task_rejected',
-        receiver: task.assignedTo,
-        sender: req.user._id,
-        project: task.projectId,
-        task: task._id,
-        actionDetails: status === 'rejected' ? `Reason: ${rejectionReason}` : `Comment: ${reviewComment || 'Great job!'}`
-      });
+    if (task.assignedTo && task.assignedTo.length > 0) {
+      for (const assignee of task.assignedTo) {
+        await createNotification({
+          title: `Task ${status === 'approved' ? 'Approved' : 'Rejected'}`,
+          message: `Admin ${req.user.name} ${status} your task ${task.title}.`,
+          type: status === 'approved' ? 'task_approved' : 'task_rejected',
+          receiver: assignee,
+          sender: req.user._id,
+          project: task.projectId,
+          task: task._id,
+          actionDetails: status === 'rejected' ? `Reason: ${rejectionReason}` : `Comment: ${reviewComment || 'Great job!'}`
+        });
+      }
     }
     
     res.json(task);
@@ -270,6 +306,50 @@ export const getLeaderboard = async (req, res) => {
   try {
     const users = await User.find({ role: 'Member' }).sort({ performanceScore: -1 }).limit(10).select('-password');
     res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const leaveTask = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ message: 'A reason for leaving the task is required.' });
+    }
+
+    const task = await Task.findById(req.params.id).populate('projectId');
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    
+    // Check if user is actually assigned
+    if (!task.assignedTo.includes(req.user._id)) {
+      return res.status(400).json({ message: 'You are not assigned to this task.' });
+    }
+
+    // Pull member from task
+    task.assignedTo = task.assignedTo.filter(memberId => memberId.toString() !== req.user._id.toString());
+    await task.save();
+
+    // Log the leave request
+    await LeaveRequest.create({
+      member: req.user._id,
+      project: task.projectId._id,
+      task: task._id,
+      type: 'task_leave',
+      reason: reason
+    });
+    
+    await createNotification({
+      title: 'Member Left Task',
+      message: `${req.user.name} has left task '${task.title}' in project '${task.projectId.title}'. Reason: ${reason}`,
+      type: 'member_removed',
+      receiver: task.assignedBy, // The admin who assigned it
+      sender: req.user._id,
+      project: task.projectId._id,
+      task: task._id
+    });
+    
+    res.json({ success: true, message: 'You have left this task successfully.' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

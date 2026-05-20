@@ -3,6 +3,7 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import logActivity from '../utils/activityLogger.js';
 import { createNotification } from '../utils/createNotification.js';
+import LeaveRequest from '../models/LeaveRequest.js';
 
 export const createProject = async (req, res) => {
   try {
@@ -15,6 +16,20 @@ export const createProject = async (req, res) => {
       members: [req.user._id],
     });
     await logActivity('project_created', `Project ${title} created`, req.user._id, project._id);
+    
+    const members = await User.find({ role: 'Member' });
+    for (const member of members) {
+      await createNotification({
+        title: 'New Project Available',
+        message: `Admin ${req.user.name} created a new project: ${title}.`,
+        type: 'project_created',
+        receiver: member._id,
+        sender: req.user._id,
+        project: project._id,
+        newValue: title
+      });
+    }
+
     res.status(201).json(project);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -34,6 +49,10 @@ export const joinProject = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
+    
+    if (['completed', 'paused', 'closed'].includes(project.status.toLowerCase())) {
+      return res.status(400).json({ message: 'You cannot join this project because it is completed or currently on hold.' });
+    }
     if (project.members.includes(req.user._id)) {
       return res.status(400).json({ message: 'Already a member' });
     }
@@ -55,23 +74,55 @@ export const joinProject = async (req, res) => {
   }
 };
 
-export const unjoinProject = async (req, res) => {
+export const leaveProject = async (req, res) => {
   try {
+    const { reason } = req.body;
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ message: 'A reason for leaving the project is required.' });
+    }
+
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
     
+    // Remove from project members
     project.members = project.members.filter(memberId => memberId.toString() !== req.user._id.toString());
     await project.save();
+
+    // Pull from all related tasks
+    await Task.updateMany(
+      { projectId: project._id, assignedTo: req.user._id },
+      { $pull: { assignedTo: req.user._id } }
+    );
+
+    // Log the leave request
+    await LeaveRequest.create({
+      member: req.user._id,
+      project: project._id,
+      type: 'project_leave',
+      reason: reason
+    });
     
     await createNotification({
       title: 'Member Left Project',
-      message: `${req.user.name} left project ${project.title}.`,
+      message: `${req.user.name} has left project '${project.title}'. Reason: ${reason}`,
       type: 'member_removed',
       receiver: project.createdBy,
       sender: req.user._id,
       project: project._id
     });
     
+    res.json({ success: true, message: 'You have left the project and have been removed from related tasks.' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const unjoinProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    project.members = project.members.filter(memberId => memberId.toString() !== req.user._id.toString());
+    await project.save();
     res.json({ message: 'Left project successfully', project });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -195,5 +246,17 @@ export const getProjectProgress = async (req, res) => {
     res.json({ progress });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const getJoinedMembers = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id).populate('members', 'name email role');
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+    res.json({ success: true, members: project.members });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -37,6 +37,7 @@ export const getAdminDashboard = async (req, res) => {
 export const getMemberDashboard = async (req, res) => {
   try {
     const memberId = req.user._id;
+    const member = await User.findById(memberId).select('performanceScore');
     const assignedProjects = await Project.countDocuments({ members: memberId });
     const tasks = await Task.find({ assignedTo: memberId });
     
@@ -56,7 +57,8 @@ export const getMemberDashboard = async (req, res) => {
       submittedTasks,
       approvedTasks,
       rejectedTasks,
-      overdueTasks
+      overdueTasks,
+      performanceScore: member?.performanceScore ?? 0,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

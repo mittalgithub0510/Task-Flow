@@ -7,7 +7,7 @@ const taskSchema = mongoose.Schema(
     instructions: String,
     expectedOutput: String,
     projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
-    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     requiredSkills: [String],
     priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
