@@ -9,12 +9,17 @@ const Team = () => {
   const [selectedMember, setSelectedMember] = useState(null);
   const [pointAmount, setPointAmount] = useState(0);
 
+  const [tasks, setTasks] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
   const fetchMembers = async () => {
     try {
       const usersRes = await api.get('/users');
       const projectsRes = await api.get('/projects');
+      const tasksRes = await api.get('/tasks');
       setMembers(usersRes.data.filter(u => u.role === 'Member'));
       setProjects(projectsRes.data);
+      setTasks(tasksRes.data);
     } catch (err) {
       console.error(err);
     }
@@ -37,9 +42,34 @@ const Team = () => {
     }
   };
 
+  const filteredMembers = members.filter(member => {
+    const q = searchQuery.toLowerCase();
+    const nameMatch = member.name?.toLowerCase().includes(q);
+    const memberProjects = projects.filter(p => p.members?.some(m => m._id === member._id));
+    const projectMatch = memberProjects.some(p => p.title?.toLowerCase().includes(q));
+    const memberTasks = tasks.filter(t => {
+      if (Array.isArray(t.assignedTo)) {
+        return t.assignedTo.some(a => (a._id || a) === member._id);
+      }
+      return (t.assignedTo?._id || t.assignedTo) === member._id;
+    });
+    const taskMatch = memberTasks.some(t => t.title?.toLowerCase().includes(q));
+    
+    return nameMatch || projectMatch || taskMatch;
+  });
+
   return (
     <div className="space-y-5">
-      <h2 className="text-xl lg:text-2xl font-bold text-gray-800">Team Members</h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+        <h2 className="text-xl lg:text-2xl font-bold text-gray-800">Team Members</h2>
+        <input
+          type="text"
+          placeholder="Search by name, project, or task..."
+          className="w-full sm:max-w-md p-3 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
 
       {/* Desktop Table — hidden on mobile */}
       <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -54,10 +84,10 @@ const Team = () => {
               </tr>
             </thead>
             <tbody>
-              {members.length === 0 ? (
+              {filteredMembers.length === 0 ? (
                 <tr><td colSpan="4" className="p-4 text-center text-gray-500">No team members found.</td></tr>
               ) : (
-                members.map(member => {
+                filteredMembers.map(member => {
                   const memberProjects = projects.filter(p => p.members?.some(m => m._id === member._id));
                   return (
                     <tr key={member._id} className="border-b border-gray-100 hover:bg-gray-50 transition">
@@ -95,10 +125,10 @@ const Team = () => {
 
       {/* Mobile Cards — shown only on mobile */}
       <div className="lg:hidden space-y-3 pb-4">
-        {members.length === 0 ? (
+        {filteredMembers.length === 0 ? (
           <p className="text-center text-gray-500 py-10 text-sm">No team members found.</p>
         ) : (
-          members.map(member => {
+          filteredMembers.map(member => {
             const memberProjects = projects.filter(p => p.members?.some(m => m._id === member._id));
             return (
               <div key={member._id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">

@@ -117,6 +117,8 @@ const Tasks = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [leaveReason, setLeaveReason] = useState('');
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [githubLink, setGithubLink] = useState('');
   const [liveDemoLink, setLiveDemoLink] = useState('');
   const [submissionNote, setSubmissionNote] = useState('');
@@ -204,13 +206,22 @@ const Tasks = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl lg:text-2xl font-bold text-gray-800">Tasks</h2>
         {user?.role === 'Admin' && (
           <button onClick={() => navigate('/tasks/create')} className="bg-blue-600 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-xl hover:bg-blue-700 shadow-sm text-sm font-semibold">
             + Assign Task
           </button>
         )}
+      </div>
+      <div className="mb-5">
+        <input
+          type="text"
+          placeholder="Search tasks by name..."
+          className="w-full sm:max-w-md p-3 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       {tasks.length === 0 ? (
@@ -223,7 +234,7 @@ const Tasks = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
-          {tasks.map((task) => (
+          {tasks.filter(t => t.title?.toLowerCase().includes(searchQuery.toLowerCase())).map((task) => (
             <TaskCard key={task._id} task={task} user={user} openEditModal={openEditModal} openReviewModal={openReviewModal} openSubmitModal={openSubmitModal} openLeaveModal={openLeaveModal} />
           ))}
         </div>

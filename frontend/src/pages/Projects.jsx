@@ -100,6 +100,8 @@ const Projects = () => {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('active');
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   const fetchProjects = async () => {
     try {
       const { data } = await api.get('/projects');
@@ -165,15 +167,17 @@ const Projects = () => {
     setShowEditModal(true);
   };
 
-  const sortedProjects = [...projects].sort((a, b) => {
-    if (a.status === 'completed' && b.status !== 'completed') return 1;
-    if (a.status !== 'completed' && b.status === 'completed') return -1;
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
+  const sortedProjects = [...projects]
+    .filter(p => p.title?.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => {
+      if (a.status === 'completed' && b.status !== 'completed') return 1;
+      if (a.status !== 'completed' && b.status === 'completed') return -1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl lg:text-2xl font-bold text-gray-800">Projects</h2>
         {user?.role === 'Admin' && (
           <button
@@ -183,6 +187,15 @@ const Projects = () => {
             + New Project
           </button>
         )}
+      </div>
+      <div className="mb-5">
+        <input
+          type="text"
+          placeholder="Search projects by name..."
+          className="w-full sm:max-w-md p-3 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       {sortedProjects.length === 0 ? (
